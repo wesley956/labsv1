@@ -38,6 +38,8 @@ O Cruz Agenda será multiestabelecimento e multiprofissional. Cada estabelecimen
 - [Sistema visual](docs/DESIGN_SYSTEM.md)
 - [Estrutura inicial de layout](docs/LAYOUT.md)
 - [Fluxos funcionais da V1](docs/FUNCTIONAL_FLOWS.md)
+- [Modelagem do banco de dados](docs/DATABASE_MODEL.md)
+- [Segurança e RLS no Supabase](docs/SUPABASE_SECURITY.md)
 
 ## Stack planejada
 
@@ -53,4 +55,4 @@ O Cruz Agenda será multiestabelecimento e multiprofissional. Cada estabelecimen
 
 ## Status
 
-Produto, identidade visual, layout e fluxos funcionais principais da primeira versão definidos. Próxima etapa: modelagem do banco de dados, regras de segurança e estrutura técnica inicial.
+Produto, identidade, layout, fluxos funcionais, modelagem de dados e estratégia de segurança definidos. Próxima etapa: inicialização técnica do projeto e implementação da fundação.
