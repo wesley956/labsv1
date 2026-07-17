@@ -37,6 +37,7 @@ O Cruz Agenda será multiestabelecimento e multiprofissional. Cada estabelecimen
 - [Visão do produto](docs/PRODUCT.md)
 - [Sistema visual](docs/DESIGN_SYSTEM.md)
 - [Estrutura inicial de layout](docs/LAYOUT.md)
+- [Fluxos funcionais da V1](docs/FUNCTIONAL_FLOWS.md)
 
 ## Stack planejada
 
@@ -52,4 +53,4 @@ O Cruz Agenda será multiestabelecimento e multiprofissional. Cada estabelecimen
 
 ## Status
 
-Em definição de produto, regras e layout da primeira versão.
+Produto, identidade visual, layout e fluxos funcionais principais da primeira versão definidos. Próxima etapa: modelagem do banco de dados, regras de segurança e estrutura técnica inicial.
