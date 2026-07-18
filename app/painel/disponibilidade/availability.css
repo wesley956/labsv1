@@ -1,0 +1,54 @@
+.availability-page { display: grid; gap: 18px; }
+.availability-toolbar { padding: 18px; display: flex; align-items: end; gap: 18px; }
+.compact-field { margin: 0; min-width: 230px; }
+.availability-person-summary { display: flex; align-items: center; gap: 12px; flex: 1; }
+.availability-person-summary div:last-child { display: grid; gap: 3px; }
+.availability-person-summary span { color: var(--muted); font-size: 13px; }
+.availability-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); gap: 18px; }
+.panel-header p { margin: 6px 0 0; }
+.weekly-list { display: grid; gap: 10px; }
+.weekly-row { display: grid; grid-template-columns: 120px 1fr 82px; gap: 14px; align-items: start; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.weekly-row.day-off { background: color-mix(in srgb, var(--surface) 75%, var(--bg)); }
+.day-switch { display: flex; align-items: center; gap: 9px; min-height: 48px; font-weight: 800; }
+.day-switch input { accent-color: var(--primary); }
+.period-list { display: grid; gap: 8px; }
+.period-row { display: grid; grid-template-columns: minmax(105px, 1fr) auto minmax(105px, 1fr) 36px; gap: 8px; align-items: center; }
+.period-row .input { min-height: 42px; }
+.closed-label { display: inline-flex; min-height: 48px; align-items: center; color: var(--muted); font-weight: 700; }
+.text-button { min-height: 42px; border: 0; background: transparent; color: var(--primary); font-weight: 800; }
+.text-button:disabled { color: var(--muted); cursor: default; }
+.small-icon-button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 20px; line-height: 1; }
+.block-list { display: grid; gap: 10px; }
+.block-item { display: flex; justify-content: space-between; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 13px; }
+.block-item > div { display: grid; gap: 4px; }
+.block-item span, .block-item small { color: var(--muted); }
+.compact-empty { min-height: 180px; display: grid; place-content: center; text-align: center; gap: 8px; color: var(--muted); }
+.compact-empty strong { color: var(--text); }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(8, 12, 24, .58); backdrop-filter: blur(8px); }
+.modal-card { width: min(620px, 100%); padding: 24px; max-height: calc(100vh - 40px); overflow: auto; }
+.modal-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.modal-header h2 { margin: 0; }
+.modal-header p { margin: 6px 0 0; color: var(--muted); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+.checkbox-card { min-height: 48px; margin: 18px 0; padding: 0 14px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 12px; font-weight: 700; }
+.checkbox-card input { accent-color: var(--primary); }
+
+@media (max-width: 1050px) {
+  .availability-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .availability-toolbar { align-items: stretch; flex-direction: column; }
+  .compact-field { min-width: 0; }
+  .weekly-row { grid-template-columns: 1fr; }
+  .day-switch { min-height: auto; }
+  .text-button { justify-self: start; padding: 0; }
+  .period-row { grid-template-columns: 1fr auto 1fr 34px; }
+}
+
+@media (max-width: 520px) {
+  .period-row { grid-template-columns: 1fr 1fr 34px; }
+  .period-row > span { display: none; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions .button { width: 100%; }
+}
