@@ -8,11 +8,11 @@ export default async function PublicBookingPage({ params }: { params: Promise<{ 
   const supabase = await createClient();
   const { data: business, error } = await supabase
     .from("businesses")
-    .select("id,name,slug")
+    .select("slug")
     .eq("slug", slug)
     .maybeSingle();
 
   if (error || !business) notFound();
 
-  return <PublicBooking businessId={business.id} businessName={business.name} slug={business.slug} />;
+  return <PublicBooking slug={business.slug} />;
 }
