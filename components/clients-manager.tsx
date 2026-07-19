@@ -30,6 +30,11 @@ function digits(value: string) {
   return value.replace(/\D/g, "");
 }
 
+function validEmail(value: string) {
+  if (!value) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 const statusLabels: Record<string, string> = {
   confirmed: "Confirmado",
   completed: "Concluído",
@@ -70,8 +75,18 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
   async function submit() {
     if (!draft.name.trim() || !draft.phone.trim() || saving) return;
     const normalizedPhone = digits(draft.phone);
-    if (normalizedPhone.length < 10) {
+    const email = draft.email.trim();
+
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 13) {
       setError("Informe um WhatsApp válido com DDD.");
+      return;
+    }
+    if (!validEmail(email)) {
+      setError("Informe um e-mail válido ou deixe o campo vazio.");
+      return;
+    }
+    if (draft.notes.trim().length > 2000) {
+      setError("As observações devem ter no máximo 2.000 caracteres.");
       return;
     }
 
@@ -82,7 +97,7 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
       name: draft.name.trim(),
       phone: draft.phone.trim(),
       phone_normalized: normalizedPhone,
-      email: draft.email.trim(),
+      email,
       notes: draft.notes.trim(),
     };
 
@@ -135,6 +150,6 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
       })}{filtered.length === 0 && <div className="empty-state"><strong>Nenhum cliente encontrado</strong><p>Cadastre manualmente ou crie um agendamento.</p></div>}</section>
       <aside className="card client-detail">{selected ? <><div className="client-detail-head"><span className="client-avatar large">{selected.name.slice(0, 1).toUpperCase()}</span><div><h2>{selected.name}</h2><p>{selected.phone}</p></div><button className="button button-secondary" onClick={() => startEdit(selected)}>Editar</button></div><div className="client-info-grid"><div><small>E-mail</small><strong>{selected.email || "Não informado"}</strong></div><div><small>Atendimentos</small><strong>{history.length}</strong></div><div className="wide"><small>Observações</small><strong>{selected.notes || "Nenhuma observação"}</strong></div></div><h3>Histórico</h3><div className="client-history">{history.map((item) => <div key={item.id}><span><strong>{item.service_name}</strong><small>{item.professional_name}</small></span><span><strong>{new Date(`${item.appointment_date}T12:00:00`).toLocaleDateString("pt-BR")}</strong><small>{item.start_time.slice(0, 5)} · {statusLabels[item.status] ?? item.status}</small></span></div>)}{history.length === 0 && <p className="table-muted">Ainda não há atendimentos para este cliente.</p>}</div></> : <div className="empty-state"><strong>Selecione um cliente</strong><p>Os detalhes e o histórico aparecerão aqui.</p></div>}</aside>
     </div>
-    {open && <div className="modal-backdrop" onMouseDown={() => !saving && setOpen(false)}><div className="card modal-card" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><h2>{editingId ? "Editar cliente" : "Novo cliente"}</h2><p>Nome e WhatsApp são obrigatórios.</p></div><button className="icon-button" disabled={saving} onClick={() => setOpen(false)}>×</button></div>{error && <div className="notice-box" style={{ marginBottom: 16 }}>{error}</div>}<div className="form-grid"><div className="field"><label>Nome</label><input className="input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div><div className="field"><label>WhatsApp</label><input className="input" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></div><div className="field field-wide"><label>E-mail</label><input className="input" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></div><div className="field field-wide"><label>Observações</label><textarea className="input textarea" value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></div></div><div className="modal-actions"><button className="button button-secondary" disabled={saving} onClick={() => setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={!draft.name.trim() || !draft.phone.trim() || saving} onClick={submit}>{saving ? "Salvando..." : "Salvar cliente"}</button></div></div></div>}
+    {open && <div className="modal-backdrop" onMouseDown={() => !saving && setOpen(false)}><div className="card modal-card" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><h2>{editingId ? "Editar cliente" : "Novo cliente"}</h2><p>Nome e WhatsApp são obrigatórios.</p></div><button className="icon-button" disabled={saving} onClick={() => setOpen(false)}>×</button></div>{error && <div className="notice-box" style={{ marginBottom: 16 }}>{error}</div>}<div className="form-grid"><div className="field"><label>Nome</label><input className="input" maxLength={120} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div><div className="field"><label>WhatsApp</label><input className="input" inputMode="tel" maxLength={20} value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></div><div className="field field-wide"><label>E-mail</label><input className="input" type="email" maxLength={254} value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></div><div className="field field-wide"><label>Observações</label><textarea className="input textarea" maxLength={2000} value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /><small className="table-muted">{draft.notes.length}/2000</small></div></div><div className="modal-actions"><button className="button button-secondary" disabled={saving} onClick={() => setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={!draft.name.trim() || !draft.phone.trim() || saving} onClick={submit}>{saving ? "Salvando..." : "Salvar cliente"}</button></div></div></div>}
   </div>;
 }
