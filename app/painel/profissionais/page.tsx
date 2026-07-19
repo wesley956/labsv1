@@ -8,13 +8,11 @@ export default async function ProfessionalsPage() {
 
   const { data, error } = await supabase
     .from("professionals")
-    .select("id, name, specialty, phone, active")
+    .select("id, name, specialty, phone, active, photo_url")
     .eq("business_id", business.id)
     .order("name");
 
-  if (error) {
-    throw new Error(`Não foi possível carregar os profissionais: ${error.message}`);
-  }
+  if (error) throw new Error(`Não foi possível carregar os profissionais: ${error.message}`);
 
   return <ProfessionalsManager businessId={business.id} initialItems={data ?? []} />;
 }
