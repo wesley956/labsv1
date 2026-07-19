@@ -31,53 +31,53 @@ export function ServicesManager({ businessId, initialProfessionals, initialServi
 
   const filtered = useMemo(() => items.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())), [items, query]);
 
-  function startCreate() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setError("");
-    setOpen(true);
-  }
-
-  function startEdit(item: Service) {
-    setEditingId(item.id);
-    setForm({ name: item.name, duration: item.duration, price: String(item.price).replace(".", ","), professionalIds: item.professionalIds });
-    setError("");
-    setOpen(true);
-  }
-
-  function toggleProfessional(id: string) {
-    setForm((current) => ({ ...current, professionalIds: current.professionalIds.includes(id) ? current.professionalIds.filter((value) => value !== id) : [...current.professionalIds, id] }));
-  }
+  function startCreate() { setEditingId(null); setForm(emptyForm); setError(""); setOpen(true); }
+  function startEdit(item: Service) { setEditingId(item.id); setForm({ name: item.name, duration: item.duration, price: String(item.price).replace(".", ","), professionalIds: item.professionalIds }); setError(""); setOpen(true); }
+  function toggleProfessional(id: string) { setForm((current) => ({ ...current, professionalIds: current.professionalIds.includes(id) ? current.professionalIds.filter((value) => value !== id) : [...current.professionalIds, id] })); }
 
   async function submit() {
     const price = parsePrice(form.price);
-    if (!form.name.trim() || price < 0) return;
-    setSaving(true);
-    setError("");
+    if (!form.name.trim() || !Number.isFinite(price) || price < 0 || !Number.isInteger(form.duration) || form.duration <= 0) {
+      setError("Informe nome, duração e preço válidos.");
+      return;
+    }
+    setSaving(true); setError("");
 
     try {
       let serviceId = editingId;
       if (editingId) {
         const { error: updateError } = await supabase.from("services").update({ name: form.name.trim(), duration_minutes: form.duration, price }).eq("id", editingId).eq("business_id", businessId);
         if (updateError) throw updateError;
-        const { error: removeError } = await supabase.from("service_professionals").delete().eq("service_id", editingId).eq("business_id", businessId);
-        if (removeError) throw removeError;
+
+        const previousIds = items.find((item) => item.id === editingId)?.professionalIds ?? [];
+        const idsToAdd = form.professionalIds.filter((id) => !previousIds.includes(id));
+        const idsToRemove = previousIds.filter((id) => !form.professionalIds.includes(id));
+
+        if (idsToAdd.length) {
+          const { error: addError } = await supabase.from("service_professionals").insert(idsToAdd.map((professionalId) => ({ business_id: businessId, service_id: editingId, professional_id: professionalId })));
+          if (addError) throw addError;
+        }
+        if (idsToRemove.length) {
+          const { error: removeError } = await supabase.from("service_professionals").delete().eq("service_id", editingId).eq("business_id", businessId).in("professional_id", idsToRemove);
+          if (removeError) throw removeError;
+        }
       } else {
         const { data, error: insertError } = await supabase.from("services").insert({ business_id: businessId, name: form.name.trim(), duration_minutes: form.duration, price }).select("id").single();
         if (insertError) throw insertError;
         serviceId = data.id;
+        if (form.professionalIds.length) {
+          const { error: linksError } = await supabase.from("service_professionals").insert(form.professionalIds.map((professionalId) => ({ business_id: businessId, service_id: data.id, professional_id: professionalId })));
+          if (linksError) {
+            await supabase.from("services").delete().eq("id", data.id).eq("business_id", businessId);
+            throw linksError;
+          }
+        }
       }
 
       if (!serviceId) throw new Error("Serviço não identificado.");
-      if (form.professionalIds.length) {
-        const { error: linksError } = await supabase.from("service_professionals").insert(form.professionalIds.map((professionalId) => ({ business_id: businessId, service_id: serviceId!, professional_id: professionalId })));
-        if (linksError) throw linksError;
-      }
-
       const next: Service = { id: serviceId, name: form.name.trim(), duration: form.duration, price, active: editingId ? items.find((item) => item.id === editingId)?.active ?? true : true, professionalIds: form.professionalIds };
       setItems((current) => editingId ? current.map((item) => item.id === editingId ? next : item) : [...current, next].sort((a, b) => a.name.localeCompare(b.name)));
-      setOpen(false);
-      setForm(emptyForm);
+      setOpen(false); setForm(emptyForm); setEditingId(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível salvar o serviço.");
     } finally {
