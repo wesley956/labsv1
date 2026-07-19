@@ -1,102 +1,93 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  AvailabilityBlock,
-  WeeklyAvailability,
-  createAvailabilityId,
-  loadAvailability,
-  loadBlocks,
-  saveAvailability,
-  saveBlocks,
-} from "@/lib/availability-data";
-import { loadProfessionals, ProfessionalRecord } from "@/lib/local-data";
+import { useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-const emptyBlock = (professionalId = ""): AvailabilityBlock => ({
-  id: "",
-  professionalId,
-  date: "",
-  allDay: true,
-  start: "09:00",
-  end: "18:00",
-  reason: "",
-});
+type Professional = { id: string; name: string; specialty: string; active: boolean };
+type AvailabilityRow = { id: string; professional_id: string; weekday: number; enabled: boolean; start_time: string; end_time: string };
+type BlockRow = { id: string; professional_id: string; block_date: string; all_day: boolean; start_time: string | null; end_time: string | null; reason: string };
+type Period = { id: string; start: string; end: string };
+type Day = { weekday: number; label: string; enabled: boolean; periods: Period[] };
 
-export function AvailabilityManager() {
-  const [professionals, setProfessionals] = useState<ProfessionalRecord[]>([]);
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState("");
-  const [availability, setAvailability] = useState<WeeklyAvailability[]>([]);
-  const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
+const labels = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const newPeriod = (start = "09:00", end = "18:00"): Period => ({ id: crypto.randomUUID(), start, end });
+const emptyBlock = (professionalId = "") => ({ professionalId, date: "", allDay: true, start: "09:00", end: "18:00", reason: "" });
+
+function buildDays(professionalId: string, rows: AvailabilityRow[]): Day[] {
+  return labels.map((label, weekday) => {
+    const periods = rows.filter((row) => row.professional_id === professionalId && row.weekday === weekday && row.enabled);
+    return {
+      weekday,
+      label,
+      enabled: periods.length > 0,
+      periods: periods.length ? periods.map((row) => ({ id: row.id, start: row.start_time.slice(0, 5), end: row.end_time.slice(0, 5) })) : [],
+    };
+  });
+}
+
+export function AvailabilityManager({ businessId, initialProfessionals, initialAvailability, initialBlocks }: { businessId: string; initialProfessionals: Professional[]; initialAvailability: AvailabilityRow[]; initialBlocks: BlockRow[] }) {
+  const [selectedProfessionalId, setSelectedProfessionalId] = useState(initialProfessionals[0]?.id ?? "");
+  const [availability, setAvailability] = useState(initialAvailability);
+  const [blocks, setBlocks] = useState(initialBlocks);
   const [showBlockForm, setShowBlockForm] = useState(false);
-  const [blockDraft, setBlockDraft] = useState<AvailabilityBlock>(emptyBlock());
+  const [blockDraft, setBlockDraft] = useState(emptyBlock(initialProfessionals[0]?.id ?? ""));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  useEffect(() => {
-    const loadedProfessionals = loadProfessionals();
-    const activeProfessionals = loadedProfessionals.filter((professional) => professional.active);
-    setProfessionals(activeProfessionals);
-    setSelectedProfessionalId(activeProfessionals[0]?.id || "");
-    setAvailability(loadAvailability(loadedProfessionals));
-    setBlocks(loadBlocks());
-  }, []);
+  const selectedProfessional = initialProfessionals.find((professional) => professional.id === selectedProfessionalId);
+  const schedule = useMemo(() => buildDays(selectedProfessionalId, availability), [selectedProfessionalId, availability]);
+  const professionalBlocks = useMemo(() => blocks.filter((block) => block.professional_id === selectedProfessionalId), [blocks, selectedProfessionalId]);
 
-  const selectedProfessional = professionals.find((professional) => professional.id === selectedProfessionalId);
-  const schedule = useMemo(
-    () => availability.filter((item) => item.professionalId === selectedProfessionalId).sort((a, b) => a.weekday - b.weekday),
-    [availability, selectedProfessionalId],
-  );
-  const professionalBlocks = useMemo(
-    () => blocks.filter((block) => block.professionalId === selectedProfessionalId).sort((a, b) => a.date.localeCompare(b.date)),
-    [blocks, selectedProfessionalId],
-  );
-
-  function updateDay(weekday: number, updater: (day: WeeklyAvailability) => WeeklyAvailability) {
+  function replaceDay(nextDay: Day) {
     setAvailability((current) => {
-      const next = current.map((day) => day.professionalId === selectedProfessionalId && day.weekday === weekday ? updater(day) : day);
-      saveAvailability(next);
-      return next;
+      const others = current.filter((row) => !(row.professional_id === selectedProfessionalId && row.weekday === nextDay.weekday));
+      const replacements: AvailabilityRow[] = nextDay.enabled ? nextDay.periods.map((period) => ({ id: period.id, professional_id: selectedProfessionalId, weekday: nextDay.weekday, enabled: true, start_time: period.start, end_time: period.end })) : [];
+      return [...others, ...replacements];
     });
   }
 
-  function toggleDay(day: WeeklyAvailability) {
-    updateDay(day.weekday, (current) => ({
-      ...current,
-      enabled: !current.enabled,
-      periods: current.enabled ? [] : [{ id: createAvailabilityId("period"), start: "09:00", end: "18:00" }],
-    }));
+  function toggleDay(day: Day) {
+    replaceDay({ ...day, enabled: !day.enabled, periods: day.enabled ? [] : [newPeriod()] });
   }
 
-  function addPeriod(day: WeeklyAvailability) {
-    updateDay(day.weekday, (current) => ({
-      ...current,
-      enabled: true,
-      periods: [...current.periods, { id: createAvailabilityId("period"), start: "13:00", end: "18:00" }],
-    }));
+  function addPeriod(day: Day) {
+    replaceDay({ ...day, enabled: true, periods: [...day.periods, newPeriod("13:00", "18:00")] });
   }
 
-  function updatePeriod(day: WeeklyAvailability, periodId: string, field: "start" | "end", value: string) {
-    updateDay(day.weekday, (current) => ({
-      ...current,
-      periods: current.periods.map((period) => period.id === periodId ? { ...period, [field]: value } : period),
-    }));
+  function updatePeriod(day: Day, periodId: string, field: "start" | "end", value: string) {
+    replaceDay({ ...day, periods: day.periods.map((period) => period.id === periodId ? { ...period, [field]: value } : period) });
   }
 
-  function removePeriod(day: WeeklyAvailability, periodId: string) {
-    updateDay(day.weekday, (current) => {
-      const periods = current.periods.filter((period) => period.id !== periodId);
-      return { ...current, periods, enabled: periods.length > 0 };
-    });
+  function removePeriod(day: Day, periodId: string) {
+    const periods = day.periods.filter((period) => period.id !== periodId);
+    replaceDay({ ...day, periods, enabled: periods.length > 0 });
   }
 
   function copyMondayToWeekdays() {
-    const monday = availability.find((day) => day.professionalId === selectedProfessionalId && day.weekday === 1);
+    const monday = schedule.find((day) => day.weekday === 1);
     if (!monday) return;
     setAvailability((current) => {
-      const next = current.map((day) => day.professionalId === selectedProfessionalId && day.weekday >= 2 && day.weekday <= 5
-        ? { ...day, enabled: monday.enabled, periods: monday.periods.map((period) => ({ ...period, id: createAvailabilityId("period") })) }
-        : day);
-      saveAvailability(next);
-      return next;
+      const untouched = current.filter((row) => row.professional_id !== selectedProfessionalId || row.weekday < 2 || row.weekday > 5);
+      const copied = [2, 3, 4, 5].flatMap((weekday) => monday.enabled ? monday.periods.map((period) => ({ id: crypto.randomUUID(), professional_id: selectedProfessionalId, weekday, enabled: true, start_time: period.start, end_time: period.end })) : []);
+      return [...untouched, ...copied];
     });
+  }
+
+  async function saveSchedule() {
+    setError(""); setSuccess("");
+    for (const day of schedule) for (const period of day.periods) if (period.start >= period.end) { setError(`Horário inválido em ${day.label}.`); return; }
+    setSaving(true);
+    const supabase = createClient();
+    const { error: deleteError } = await supabase.from("weekly_availability").delete().eq("business_id", businessId).eq("professional_id", selectedProfessionalId);
+    if (deleteError) { setError(deleteError.message); setSaving(false); return; }
+    const rows = schedule.flatMap((day) => day.enabled ? day.periods.map((period) => ({ business_id: businessId, professional_id: selectedProfessionalId, weekday: day.weekday, enabled: true, start_time: period.start, end_time: period.end })) : []);
+    if (rows.length) {
+      const { data, error: insertError } = await supabase.from("weekly_availability").insert(rows).select("id,professional_id,weekday,enabled,start_time,end_time");
+      if (insertError) { setError(insertError.message); setSaving(false); return; }
+      setAvailability((current) => [...current.filter((row) => row.professional_id !== selectedProfessionalId), ...(data ?? [])]);
+    } else setAvailability((current) => current.filter((row) => row.professional_id !== selectedProfessionalId));
+    setSaving(false); setSuccess("Horários salvos com sucesso.");
   }
 
   function openBlockForm() {
@@ -104,95 +95,35 @@ export function AvailabilityManager() {
     setShowBlockForm(true);
   }
 
-  function saveBlock() {
-    if (!blockDraft.professionalId || !blockDraft.date || !blockDraft.reason.trim()) return;
-    if (!blockDraft.allDay && blockDraft.start >= blockDraft.end) return;
-    const nextBlock = { ...blockDraft, id: createAvailabilityId("block") };
-    const next = [...blocks, nextBlock];
-    setBlocks(next);
-    saveBlocks(next);
+  async function saveBlock() {
+    setError("");
+    if (!blockDraft.date || !blockDraft.reason.trim()) return;
+    if (!blockDraft.allDay && blockDraft.start >= blockDraft.end) { setError("O horário final precisa ser maior que o inicial."); return; }
+    setSaving(true);
+    const supabase = createClient();
+    const { data, error: blockError } = await supabase.from("availability_blocks").insert({ business_id: businessId, professional_id: selectedProfessionalId, block_date: blockDraft.date, all_day: blockDraft.allDay, start_time: blockDraft.allDay ? null : blockDraft.start, end_time: blockDraft.allDay ? null : blockDraft.end, reason: blockDraft.reason.trim() }).select("id,professional_id,block_date,all_day,start_time,end_time,reason").single();
+    setSaving(false);
+    if (blockError) { setError(blockError.message); return; }
+    setBlocks((current) => [...current, data].sort((a, b) => a.block_date.localeCompare(b.block_date)));
     setShowBlockForm(false);
   }
 
-  function removeBlock(id: string) {
-    const next = blocks.filter((block) => block.id !== id);
-    setBlocks(next);
-    saveBlocks(next);
+  async function removeBlock(id: string) {
+    setError("");
+    const supabase = createClient();
+    const { error: deleteError } = await supabase.from("availability_blocks").delete().eq("id", id).eq("business_id", businessId);
+    if (deleteError) { setError(deleteError.message); return; }
+    setBlocks((current) => current.filter((block) => block.id !== id));
   }
 
-  if (!professionals.length) {
-    return <div className="content"><div className="card empty-state"><h2>Nenhum profissional ativo</h2><p>Cadastre ou reative um profissional antes de configurar a disponibilidade.</p></div></div>;
-  }
+  if (!initialProfessionals.length) return <div className="content"><div className="card empty-state"><h2>Nenhum profissional ativo</h2><p>Cadastre ou reative um profissional antes de configurar a disponibilidade.</p></div></div>;
 
-  return (
-    <div className="content availability-page">
-      <div className="page-heading">
-        <div><h1>Disponibilidade</h1><p>Defina horários semanais, pausas, folgas e bloqueios individuais.</p></div>
-        <button className="button button-primary" onClick={openBlockForm}>+ Novo bloqueio</button>
-      </div>
-
-      <div className="card availability-toolbar">
-        <div className="field compact-field">
-          <label>Profissional</label>
-          <select className="input" value={selectedProfessionalId} onChange={(event) => setSelectedProfessionalId(event.target.value)}>
-            {professionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}
-          </select>
-        </div>
-        <div className="availability-person-summary">
-          <div className="avatar">{selectedProfessional?.name.slice(0, 1).toUpperCase()}</div>
-          <div><strong>{selectedProfessional?.name}</strong><span>{selectedProfessional?.specialty}</span></div>
-        </div>
-        <button className="button button-secondary" onClick={copyMondayToWeekdays}>Copiar segunda para dias úteis</button>
-      </div>
-
-      <div className="availability-layout">
-        <section className="card panel">
-          <div className="panel-header"><div><h3>Horários semanais</h3><p className="table-muted">Use mais de um período para criar pausas, como horário de almoço.</p></div></div>
-          <div className="weekly-list">
-            {schedule.map((day) => (
-              <div className={`weekly-row ${day.enabled ? "" : "day-off"}`} key={day.weekday}>
-                <label className="day-switch"><input type="checkbox" checked={day.enabled} onChange={() => toggleDay(day)} /><span>{day.label}</span></label>
-                <div className="period-list">
-                  {day.enabled ? day.periods.map((period) => (
-                    <div className="period-row" key={period.id}>
-                      <input className="input" type="time" value={period.start} onChange={(event) => updatePeriod(day, period.id, "start", event.target.value)} />
-                      <span>até</span>
-                      <input className="input" type="time" value={period.end} onChange={(event) => updatePeriod(day, period.id, "end", event.target.value)} />
-                      <button className="small-icon-button" onClick={() => removePeriod(day, period.id)} aria-label="Remover período">×</button>
-                    </div>
-                  )) : <span className="closed-label">Folga</span>}
-                </div>
-                <button className="text-button" disabled={!day.enabled} onClick={() => addPeriod(day)}>+ período</button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <aside className="card panel">
-          <div className="panel-header"><div><h3>Bloqueios futuros</h3><p className="table-muted">Férias, consultas, compromissos ou indisponibilidades pontuais.</p></div></div>
-          <div className="block-list">
-            {professionalBlocks.length ? professionalBlocks.map((block) => (
-              <div className="block-item" key={block.id}>
-                <div><strong>{new Date(`${block.date}T12:00:00`).toLocaleDateString("pt-BR")}</strong><span>{block.allDay ? "Dia inteiro" : `${block.start} às ${block.end}`}</span><small>{block.reason}</small></div>
-                <button className="small-icon-button" onClick={() => removeBlock(block.id)} aria-label="Excluir bloqueio">×</button>
-              </div>
-            )) : <div className="compact-empty"><strong>Nenhum bloqueio</strong><span>O profissional seguirá apenas os horários semanais.</span></div>}
-          </div>
-        </aside>
-      </div>
-
-      {showBlockForm && <div className="modal-backdrop" onMouseDown={() => setShowBlockForm(false)}>
-        <div className="card modal-card" onMouseDown={(event) => event.stopPropagation()}>
-          <div className="modal-header"><div><h2>Novo bloqueio</h2><p>Retire um período específico da agenda.</p></div><button className="small-icon-button" onClick={() => setShowBlockForm(false)}>×</button></div>
-          <div className="form-grid">
-            <div className="field field-wide"><label>Motivo</label><input className="input" value={blockDraft.reason} onChange={(event) => setBlockDraft({ ...blockDraft, reason: event.target.value })} placeholder="Ex.: Consulta médica" /></div>
-            <div className="field"><label>Data</label><input className="input" type="date" value={blockDraft.date} onChange={(event) => setBlockDraft({ ...blockDraft, date: event.target.value })} /></div>
-            <label className="checkbox-card"><input type="checkbox" checked={blockDraft.allDay} onChange={(event) => setBlockDraft({ ...blockDraft, allDay: event.target.checked })} /><span>Bloquear o dia inteiro</span></label>
-            {!blockDraft.allDay && <><div className="field"><label>Início</label><input className="input" type="time" value={blockDraft.start} onChange={(event) => setBlockDraft({ ...blockDraft, start: event.target.value })} /></div><div className="field"><label>Fim</label><input className="input" type="time" value={blockDraft.end} onChange={(event) => setBlockDraft({ ...blockDraft, end: event.target.value })} /></div></>}
-          </div>
-          <div className="modal-actions"><button className="button button-secondary" onClick={() => setShowBlockForm(false)}>Cancelar</button><button className="button button-primary" onClick={saveBlock}>Salvar bloqueio</button></div>
-        </div>
-      </div>}
-    </div>
-  );
+  return <div className="content availability-page">
+    <div className="page-heading"><div><h1>Disponibilidade</h1><p>Defina horários semanais, pausas, folgas e bloqueios individuais.</p></div><button className="button button-primary" onClick={openBlockForm}>+ Novo bloqueio</button></div>
+    {error && <div className="notice-box" style={{marginBottom:16}}>{error}</div>}{success && <div className="notice-box" style={{marginBottom:16}}>{success}</div>}
+    <div className="card availability-toolbar"><div className="field compact-field"><label>Profissional</label><select className="input" value={selectedProfessionalId} onChange={(e) => { setSelectedProfessionalId(e.target.value); setBlockDraft(emptyBlock(e.target.value)); setSuccess(""); }}>{initialProfessionals.map((professional) => <option key={professional.id} value={professional.id}>{professional.name}</option>)}</select></div><div className="availability-person-summary"><div className="avatar">{selectedProfessional?.name.slice(0,1).toUpperCase()}</div><div><strong>{selectedProfessional?.name}</strong><span>{selectedProfessional?.specialty}</span></div></div><button className="button button-secondary" onClick={copyMondayToWeekdays}>Copiar segunda para dias úteis</button><button className="button button-primary" disabled={saving} onClick={saveSchedule}>{saving ? "Salvando..." : "Salvar horários"}</button></div>
+    <div className="availability-layout"><section className="card panel"><div className="panel-header"><div><h3>Horários semanais</h3><p className="table-muted">Use mais de um período para criar pausas, como horário de almoço.</p></div></div><div className="weekly-list">{schedule.map((day) => <div className={`weekly-row ${day.enabled ? "" : "day-off"}`} key={day.weekday}><label className="day-switch"><input type="checkbox" checked={day.enabled} onChange={() => toggleDay(day)} /><span>{day.label}</span></label><div className="period-list">{day.enabled ? day.periods.map((period) => <div className="period-row" key={period.id}><input className="input" type="time" value={period.start} onChange={(e) => updatePeriod(day, period.id, "start", e.target.value)} /><span>até</span><input className="input" type="time" value={period.end} onChange={(e) => updatePeriod(day, period.id, "end", e.target.value)} /><button className="small-icon-button" onClick={() => removePeriod(day, period.id)}>×</button></div>) : <span className="closed-label">Folga</span>}</div><button className="text-button" disabled={!day.enabled} onClick={() => addPeriod(day)}>+ período</button></div>)}</div></section>
+    <aside className="card panel"><div className="panel-header"><div><h3>Bloqueios futuros</h3><p className="table-muted">Férias, consultas e indisponibilidades pontuais.</p></div></div><div className="block-list">{professionalBlocks.length ? professionalBlocks.map((block) => <div className="block-item" key={block.id}><div><strong>{new Date(`${block.block_date}T12:00:00`).toLocaleDateString("pt-BR")}</strong><span>{block.all_day ? "Dia inteiro" : `${block.start_time?.slice(0,5)} às ${block.end_time?.slice(0,5)}`}</span><small>{block.reason}</small></div><button className="small-icon-button" onClick={() => removeBlock(block.id)}>×</button></div>) : <div className="compact-empty"><strong>Nenhum bloqueio</strong><span>O profissional seguirá os horários semanais.</span></div>}</div></aside></div>
+    {showBlockForm && <div className="modal-backdrop" onMouseDown={() => !saving && setShowBlockForm(false)}><div className="card modal-card" onMouseDown={(e) => e.stopPropagation()}><div className="modal-header"><div><h2>Novo bloqueio</h2><p>Retire um período específico da agenda.</p></div><button className="small-icon-button" onClick={() => setShowBlockForm(false)}>×</button></div><div className="form-grid"><div className="field field-wide"><label>Motivo</label><input className="input" value={blockDraft.reason} onChange={(e) => setBlockDraft({...blockDraft, reason:e.target.value})} placeholder="Ex.: Consulta médica" /></div><div className="field"><label>Data</label><input className="input" type="date" value={blockDraft.date} onChange={(e) => setBlockDraft({...blockDraft, date:e.target.value})} /></div><label className="checkbox-card"><input type="checkbox" checked={blockDraft.allDay} onChange={(e) => setBlockDraft({...blockDraft, allDay:e.target.checked})} /><span>Bloquear o dia inteiro</span></label>{!blockDraft.allDay && <><div className="field"><label>Início</label><input className="input" type="time" value={blockDraft.start} onChange={(e) => setBlockDraft({...blockDraft,start:e.target.value})} /></div><div className="field"><label>Fim</label><input className="input" type="time" value={blockDraft.end} onChange={(e) => setBlockDraft({...blockDraft,end:e.target.value})} /></div></>}</div><div className="modal-actions"><button className="button button-secondary" onClick={() => setShowBlockForm(false)}>Cancelar</button><button className="button button-primary" disabled={saving || !blockDraft.date || !blockDraft.reason.trim()} onClick={saveBlock}>{saving ? "Salvando..." : "Salvar bloqueio"}</button></div></div></div>}
+  </div>;
 }
