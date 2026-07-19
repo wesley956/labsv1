@@ -92,6 +92,11 @@ export function RegisterForm() {
       return;
     }
 
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      setMessage("Este e-mail já possui uma conta confirmada. Entre com sua senha na página de login.");
+      return;
+    }
+
     if (data.session) {
       router.replace("/onboarding");
       router.refresh();
@@ -109,5 +114,6 @@ export function RegisterForm() {
     <div className="field"><label htmlFor="phone">WhatsApp</label><input className="input" id="phone" name="phone" required autoComplete="tel" placeholder="(11) 99999-9999" /></div>
     <div className="field"><label htmlFor="password">Senha</label><input className="input" id="password" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="Mínimo de 8 caracteres" /></div>
     <button className="button button-primary" style={{ width: "100%" }} disabled={loading || success}>{loading ? "Criando conta..." : success ? "Verifique seu e-mail" : "Criar conta e configurar agenda"}</button>
+    <p style={{ marginTop: 14, textAlign: "center" }}>Já possui uma conta? <Link href="/login">Entrar</Link></p>
   </form>;
 }
