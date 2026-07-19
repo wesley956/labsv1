@@ -17,19 +17,18 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet, headersToSet) {
+        setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
-          headersToSet?.forEach(({ name, value }) => response.headers.set(name, value));
         },
       },
     },
   );
 
-  // Valida/renova a sessão. Não confie apenas em cookies sem esta chamada.
+  // Valida e renova a sessão. Não confie apenas em cookies sem esta chamada.
   await supabase.auth.getClaims();
 
   return response;
