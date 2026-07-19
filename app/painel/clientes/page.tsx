@@ -15,9 +15,10 @@ export default async function ClientsPage() {
       .order("name"),
     supabase
       .from("appointments")
-      .select("id, client_id, starts_at, status, services(name), professionals(name)")
+      .select("id, client_id, appointment_date, start_time, status, service_name, professional_name")
       .eq("business_id", business.id)
-      .order("starts_at", { ascending: false }),
+      .order("appointment_date", { ascending: false })
+      .order("start_time", { ascending: false }),
   ]);
 
   if (clientsError) throw new Error(`Não foi possível carregar os clientes: ${clientsError.message}`);
