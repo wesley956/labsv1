@@ -16,10 +16,11 @@ type ClientRecord = {
 type AppointmentRecord = {
   id: string;
   client_id: string | null;
-  starts_at: string;
+  appointment_date: string;
+  start_time: string;
   status: string;
-  services: { name: string } | { name: string }[] | null;
-  professionals: { name: string } | { name: string }[] | null;
+  service_name: string;
+  professional_name: string;
 };
 
 type Draft = { name: string; phone: string; email: string; notes: string };
@@ -27,10 +28,6 @@ const emptyDraft: Draft = { name: "", phone: "", email: "", notes: "" };
 
 function digits(value: string) {
   return value.replace(/\D/g, "");
-}
-
-function relationName(value: { name: string } | { name: string }[] | null) {
-  return Array.isArray(value) ? value[0]?.name ?? "Não informado" : value?.name ?? "Não informado";
 }
 
 const statusLabels: Record<string, string> = {
@@ -81,10 +78,18 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
     setSaving(true);
     setError("");
 
+    const values = {
+      name: draft.name.trim(),
+      phone: draft.phone.trim(),
+      phone_normalized: normalizedPhone,
+      email: draft.email.trim(),
+      notes: draft.notes.trim(),
+    };
+
     if (editingId) {
       const { data, error: updateError } = await supabase
         .from("clients")
-        .update({ name: draft.name.trim(), phone: normalizedPhone, email: draft.email.trim() || null, notes: draft.notes.trim() || null })
+        .update(values)
         .eq("id", editingId)
         .eq("business_id", businessId)
         .select("id, name, phone, email, notes, created_at, updated_at")
@@ -100,7 +105,7 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
     } else {
       const { data, error: insertError } = await supabase
         .from("clients")
-        .insert({ business_id: businessId, name: draft.name.trim(), phone: normalizedPhone, email: draft.email.trim() || null, notes: draft.notes.trim() || null })
+        .insert({ business_id: businessId, ...values })
         .select("id, name, phone, email, notes, created_at, updated_at")
         .single();
 
@@ -116,6 +121,8 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
 
     setSaving(false);
     setOpen(false);
+    setEditingId("");
+    setDraft(emptyDraft);
   }
 
   return <div className="content clients-page">
@@ -126,7 +133,7 @@ export function ClientsManager({ businessId, initialClients, initialAppointments
         const count = appointments.filter((item) => item.client_id === client.id).length;
         return <button className={`client-row ${selectedId === client.id ? "active" : ""}`} key={client.id} onClick={() => setSelectedId(client.id)}><span className="client-avatar">{client.name.slice(0, 1).toUpperCase()}</span><span><strong>{client.name}</strong><small>{client.phone}</small></span><b>{count}</b></button>;
       })}{filtered.length === 0 && <div className="empty-state"><strong>Nenhum cliente encontrado</strong><p>Cadastre manualmente ou crie um agendamento.</p></div>}</section>
-      <aside className="card client-detail">{selected ? <><div className="client-detail-head"><span className="client-avatar large">{selected.name.slice(0, 1).toUpperCase()}</span><div><h2>{selected.name}</h2><p>{selected.phone}</p></div><button className="button button-secondary" onClick={() => startEdit(selected)}>Editar</button></div><div className="client-info-grid"><div><small>E-mail</small><strong>{selected.email || "Não informado"}</strong></div><div><small>Atendimentos</small><strong>{history.length}</strong></div><div className="wide"><small>Observações</small><strong>{selected.notes || "Nenhuma observação"}</strong></div></div><h3>Histórico</h3><div className="client-history">{history.map((item) => { const start = new Date(item.starts_at); return <div key={item.id}><span><strong>{relationName(item.services)}</strong><small>{relationName(item.professionals)}</small></span><span><strong>{start.toLocaleDateString("pt-BR")}</strong><small>{start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {statusLabels[item.status] ?? item.status}</small></span></div>; })}{history.length === 0 && <p className="table-muted">Ainda não há atendimentos para este cliente.</p>}</div></> : <div className="empty-state"><strong>Selecione um cliente</strong><p>Os detalhes e o histórico aparecerão aqui.</p></div>}</aside>
+      <aside className="card client-detail">{selected ? <><div className="client-detail-head"><span className="client-avatar large">{selected.name.slice(0, 1).toUpperCase()}</span><div><h2>{selected.name}</h2><p>{selected.phone}</p></div><button className="button button-secondary" onClick={() => startEdit(selected)}>Editar</button></div><div className="client-info-grid"><div><small>E-mail</small><strong>{selected.email || "Não informado"}</strong></div><div><small>Atendimentos</small><strong>{history.length}</strong></div><div className="wide"><small>Observações</small><strong>{selected.notes || "Nenhuma observação"}</strong></div></div><h3>Histórico</h3><div className="client-history">{history.map((item) => <div key={item.id}><span><strong>{item.service_name}</strong><small>{item.professional_name}</small></span><span><strong>{new Date(`${item.appointment_date}T12:00:00`).toLocaleDateString("pt-BR")}</strong><small>{item.start_time.slice(0, 5)} · {statusLabels[item.status] ?? item.status}</small></span></div>)}{history.length === 0 && <p className="table-muted">Ainda não há atendimentos para este cliente.</p>}</div></> : <div className="empty-state"><strong>Selecione um cliente</strong><p>Os detalhes e o histórico aparecerão aqui.</p></div>}</aside>
     </div>
     {open && <div className="modal-backdrop" onMouseDown={() => !saving && setOpen(false)}><div className="card modal-card" onMouseDown={(event) => event.stopPropagation()}><div className="modal-head"><div><h2>{editingId ? "Editar cliente" : "Novo cliente"}</h2><p>Nome e WhatsApp são obrigatórios.</p></div><button className="icon-button" disabled={saving} onClick={() => setOpen(false)}>×</button></div>{error && <div className="notice-box" style={{ marginBottom: 16 }}>{error}</div>}<div className="form-grid"><div className="field"><label>Nome</label><input className="input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div><div className="field"><label>WhatsApp</label><input className="input" value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></div><div className="field field-wide"><label>E-mail</label><input className="input" type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></div><div className="field field-wide"><label>Observações</label><textarea className="input textarea" value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></div></div><div className="modal-actions"><button className="button button-secondary" disabled={saving} onClick={() => setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={!draft.name.trim() || !draft.phone.trim() || saving} onClick={submit}>{saving ? "Salvando..." : "Salvar cliente"}</button></div></div></div>}
   </div>;
