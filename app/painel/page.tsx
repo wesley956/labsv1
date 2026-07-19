@@ -1,10 +1,98 @@
-const appointments = [
-  ["09:00", "Juliana Silva", "Design de sobrancelhas", "Maria"],
-  ["10:30", "Ana Paula", "Design + henna", "Maria"],
-  ["11:30", "Beatriz Santos", "Manicure", "Carla"],
-  ["14:00", "Camila Oliveira", "Limpeza de pele", "Juliana"],
-];
+import Link from "next/link";
+import { requireCurrentBusiness } from "@/lib/supabase/current-business";
+import { createClient } from "@/lib/supabase/server";
 
-export default function DashboardPage() {
-  return <div className="content"><div className="page-heading"><div><h1>Olá, Maria! 👋</h1><p>Aqui está o resumo do seu negócio hoje.</p></div><button className="button button-primary">+ Novo agendamento</button></div><section className="stats-grid"><div className="card stat-card"><span>Agendamentos hoje</span><strong>8</strong><small className="stat-positive">+2 em relação a ontem</small></div><div className="card stat-card"><span>Faturamento previsto</span><strong>R$ 960</strong><small className="stat-positive">+15% na semana</small></div><div className="card stat-card"><span>Clientes ativos</span><strong>128</strong><small className="stat-positive">+12 neste mês</small></div><div className="card stat-card"><span>Período gratuito</span><strong style={{color:"var(--pink)"}}>7 dias</strong><small className="table-muted">de 15 dias</small></div></section><section className="dashboard-grid"><div className="card panel"><div className="panel-header"><h3>Próximos atendimentos</h3><a className="table-muted" href="/painel/agenda">Ver agenda</a></div><div className="appointment-list">{appointments.map(([time,name,service,professional])=><div className="appointment-item" key={`${time}-${name}`}><strong>{time}</strong><div><b>{name}</b><br/><small>{service}</small></div><span className="badge badge-purple">{professional}</span></div>)}</div></div><div className="card panel"><div className="panel-header"><h3>Configuração da conta</h3><span className="badge badge-success">80%</span></div><div className="checklist">{["Dados do estabelecimento","Adicionar profissional","Adicionar serviço","Definir disponibilidade","Compartilhar seu link"].map((item,i)=><div className="check-item" key={item}><span className="check">{i<4?"✓":""}</span><span>{item}</span></div>)}</div><div style={{marginTop:24,padding:18,borderRadius:14,background:"var(--surface-soft)"}}><small className="table-muted">Seu link de agendamento</small><strong style={{display:"block",margin:"8px 0 14px",color:"var(--primary)"}}>cruzagenda.com/studio-bella</strong><button className="button button-primary">Copiar link</button></div></div></section></div>;
+function todayIso() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+export default async function DashboardPage() {
+  const business = await requireCurrentBusiness();
+  const supabase = await createClient();
+  const today = todayIso();
+
+  const [appointmentsResult, clientsResult, professionalsResult, servicesResult, availabilityResult] = await Promise.all([
+    supabase
+      .from("appointments")
+      .select("id,customer_name,service_name,professional_name,start_time,service_price,status")
+      .eq("business_id", business.id)
+      .eq("appointment_date", today)
+      .neq("status", "cancelled")
+      .order("start_time"),
+    supabase.from("clients").select("id", { count: "exact", head: true }).eq("business_id", business.id),
+    supabase.from("professionals").select("id", { count: "exact", head: true }).eq("business_id", business.id).eq("active", true),
+    supabase.from("services").select("id", { count: "exact", head: true }).eq("business_id", business.id).eq("active", true),
+    supabase.from("weekly_availability").select("id", { count: "exact", head: true }).eq("business_id", business.id).eq("enabled", true),
+  ]);
+
+  const queryError = appointmentsResult.error || clientsResult.error || professionalsResult.error || servicesResult.error || availabilityResult.error;
+  if (queryError) throw new Error(`Não foi possível carregar o painel: ${queryError.message}`);
+
+  const appointments = appointmentsResult.data ?? [];
+  const expectedRevenue = appointments
+    .filter((item) => item.status === "confirmed" || item.status === "completed")
+    .reduce((total, item) => total + Number(item.service_price || 0), 0);
+
+  const setupItems = [
+    { label: "Dados do estabelecimento", done: Boolean(business.name && business.slug) },
+    { label: "Adicionar profissional", done: (professionalsResult.count ?? 0) > 0 },
+    { label: "Adicionar serviço", done: (servicesResult.count ?? 0) > 0 },
+    { label: "Definir disponibilidade", done: (availabilityResult.count ?? 0) > 0 },
+    { label: "Compartilhar seu link", done: Boolean(business.slug) },
+  ];
+  const completedSetup = setupItems.filter((item) => item.done).length;
+  const setupPercentage = Math.round((completedSetup / setupItems.length) * 100);
+
+  return (
+    <div className="content">
+      <div className="page-heading">
+        <div><h1>Olá! 👋</h1><p>Aqui está o resumo de {business.name} hoje.</p></div>
+        <Link className="button button-primary" href="/painel/agendamentos">+ Novo agendamento</Link>
+      </div>
+
+      <section className="stats-grid">
+        <div className="card stat-card"><span>Agendamentos hoje</span><strong>{appointments.length}</strong><small className="table-muted">Atendimentos não cancelados</small></div>
+        <div className="card stat-card"><span>Faturamento previsto</span><strong>{money(expectedRevenue)}</strong><small className="table-muted">Confirmados e concluídos hoje</small></div>
+        <div className="card stat-card"><span>Clientes cadastrados</span><strong>{clientsResult.count ?? 0}</strong><small className="table-muted">Base real do estabelecimento</small></div>
+        <div className="card stat-card"><span>Configuração da conta</span><strong style={{ color: "var(--pink)" }}>{setupPercentage}%</strong><small className="table-muted">{completedSetup} de {setupItems.length} etapas</small></div>
+      </section>
+
+      <section className="dashboard-grid">
+        <div className="card panel">
+          <div className="panel-header"><h3>Atendimentos de hoje</h3><Link className="table-muted" href="/painel/agenda">Ver agenda</Link></div>
+          <div className="appointment-list">
+            {appointments.slice(0, 6).map((item) => (
+              <div className="appointment-item" key={item.id}>
+                <strong>{item.start_time.slice(0, 5)}</strong>
+                <div><b>{item.customer_name}</b><br /><small>{item.service_name}</small></div>
+                <span className="badge badge-purple">{item.professional_name}</span>
+              </div>
+            ))}
+            {appointments.length === 0 && <div className="empty-state"><strong>Nenhum atendimento hoje</strong><p>Os próximos agendamentos aparecerão aqui.</p></div>}
+          </div>
+        </div>
+
+        <div className="card panel">
+          <div className="panel-header"><h3>Configuração da conta</h3><span className="badge badge-success">{setupPercentage}%</span></div>
+          <div className="checklist">
+            {setupItems.map((item) => <div className="check-item" key={item.label}><span className="check">{item.done ? "✓" : ""}</span><span>{item.label}</span></div>)}
+          </div>
+          <div style={{ marginTop: 24, padding: 18, borderRadius: 14, background: "var(--surface-soft)" }}>
+            <small className="table-muted">Seu link de agendamento</small>
+            <strong style={{ display: "block", margin: "8px 0 14px", color: "var(--primary)" }}>/{business.slug}</strong>
+            <Link className="button button-primary" href="/painel/meu-link">Copiar e compartilhar</Link>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 }
