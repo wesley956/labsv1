@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Brand } from "@/components/brand";
+import { MobilePanelNav } from "@/components/mobile-panel-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { requireCurrentBusiness } from "@/lib/supabase/current-business";
 
@@ -15,5 +16,5 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const business = await requireCurrentBusiness();
   const initial = business.name.trim().slice(0, 1).toUpperCase() || "C";
 
-  return <div className="app-shell"><aside className="sidebar"><Brand href="/painel" /><nav className="sidebar-nav">{links.map(([href,label])=><Link className="sidebar-link" href={href} key={href}>{label}</Link>)}</nav><div className="sidebar-bottom"><small>Estabelecimento</small><strong style={{display:"block",marginTop:6}}>{business.name}</strong><small>Plano inicial · 15 dias grátis</small></div></aside><main className="app-main"><header className="topbar"><div><h2>{business.name}</h2><small className="table-muted">Link público: /{business.slug}</small></div><div className="topbar-actions"><ThemeToggle /><Link className="icon-button" aria-label="Lembretes" href="/painel/lembretes">♢</Link><div className="avatar" title={business.userEmail}>{initial}</div></div></header>{children}</main><nav className="mobile-nav"><Link href="/painel"><span>⌂</span><small>Início</small></Link><Link href="/painel/agenda"><span>◫</span><small>Agenda</small></Link><Link href="/painel/agendamentos"><span>＋</span><small>Novo</small></Link><Link href="/painel/lembretes"><span>♢</span><small>Lembretes</small></Link><Link href="/painel/mais"><span>•••</span><small>Mais</small></Link></nav></div>;
+  return <div className="app-shell"><aside className="sidebar"><Brand href="/painel" /><nav className="sidebar-nav">{links.map(([href,label])=><Link className="sidebar-link" href={href} key={href}>{label}</Link>)}</nav><div className="sidebar-bottom"><small>Estabelecimento</small><strong style={{display:"block",marginTop:6}}>{business.name}</strong><small>Plano inicial · 15 dias grátis</small></div></aside><main className="app-main"><header className="topbar"><div><h2>{business.name}</h2><small className="table-muted">Link público: /{business.slug}</small></div><div className="topbar-actions"><ThemeToggle /><Link className="icon-button" aria-label="Lembretes" href="/painel/lembretes">♢</Link><div className="avatar" title={business.userEmail}>{initial}</div></div></header>{children}</main><MobilePanelNav /></div>;
 }
