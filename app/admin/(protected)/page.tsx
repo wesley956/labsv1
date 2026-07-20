@@ -49,6 +49,9 @@ function money(value: number | string) {
 function eventTitle(event: AdminEvent) {
   if (event.action === "business_deleted") return `Estabelecimento excluído · ${event.business_name}`;
   if (event.action === "subscription_updated") return `Assinatura atualizada · ${event.business_name}`;
+  if (event.action === "payment_created") return `Pagamento registrado · ${event.business_name}`;
+  if (event.action === "payment_status_updated") return `Pagamento atualizado · ${event.business_name}`;
+  if (event.action === "admin_account_updated") return "Conta administrativa atualizada";
   return `Ação administrativa · ${event.business_name}`;
 }
 
@@ -75,7 +78,10 @@ export default async function AdminDashboardPage() {
           <h1>Visão geral</h1>
           <p>Indicadores reais de uso, assinaturas e operação da plataforma.</p>
         </div>
-        <Link className="button button-primary" href="/admin/estabelecimentos">Gerenciar estabelecimentos</Link>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link className="button button-secondary" href="/admin/pagamentos">Pagamentos</Link>
+          <Link className="button button-primary" href="/admin/estabelecimentos">Gerenciar estabelecimentos</Link>
+        </div>
       </div>
 
       <section className="admin-metrics">
@@ -100,7 +106,7 @@ export default async function AdminDashboardPage() {
             <tbody>
               {businesses.slice(0, 6).map((business) => (
                 <tr key={business.id}>
-                  <td><div className="admin-business-name"><strong>{business.name}</strong><small>/{business.slug}</small></div></td>
+                  <td><div className="admin-business-name"><Link href={`/admin/estabelecimentos/${business.id}`}><strong>{business.name}</strong></Link><small>/{business.slug}</small></div></td>
                   <td>{business.owner_email || "Não informado"}</td>
                   <td><span className={`badge ${business.subscription_status === "active" ? "badge-success" : "badge-purple"}`}>{statusLabels[business.subscription_status] ?? business.subscription_status}</span></td>
                   <td>{new Date(business.created_at).toLocaleDateString("pt-BR")}</td>
@@ -113,7 +119,7 @@ export default async function AdminDashboardPage() {
       </section>
 
       <section className="card admin-section">
-        <div className="admin-section-header"><div><h3>Histórico administrativo</h3><p>Alterações e exclusões realizadas pelo ADM ficam registradas aqui.</p></div></div>
+        <div className="admin-section-header"><div><h3>Histórico administrativo</h3><p>Alterações, pagamentos, acessos e exclusões ficam registrados aqui.</p></div><Link className="button button-secondary" href="/admin/atividades">Ver histórico completo</Link></div>
         <div className="admin-events">
           {events.map((event) => (
             <div className="admin-event" key={event.id}>
@@ -121,7 +127,7 @@ export default async function AdminDashboardPage() {
               <small>{new Date(event.created_at).toLocaleString("pt-BR")}</small>
             </div>
           ))}
-          {!events.length && <div className="empty-state"><strong>Nenhuma ação administrativa registrada</strong><p>Alterações de assinatura e exclusões aparecerão aqui.</p></div>}
+          {!events.length && <div className="empty-state"><strong>Nenhuma ação administrativa registrada</strong><p>As próximas alterações aparecerão aqui.</p></div>}
         </div>
       </section>
     </div>
