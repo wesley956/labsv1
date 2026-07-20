@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requirePlatformAdmin } from "@/lib/supabase/current-admin";
 import { createClient } from "@/lib/supabase/server";
 
 type DashboardData = {
@@ -46,6 +47,7 @@ function money(value: number | string) {
 }
 
 export default async function AdminDashboardPage() {
+  await requirePlatformAdmin();
   const supabase = await createClient();
   const [dashboardResponse, businessesResponse, eventsResponse] = await Promise.all([
     supabase.rpc("get_admin_dashboard"),
