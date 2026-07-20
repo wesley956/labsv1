@@ -15,6 +15,7 @@ type Appointment = {
 };
 type BookingRules = { slotStepMinutes: number; minimumNoticeHours: number; bookingWindowDays: number };
 type FormState = { customerName: string; customerPhone: string; professionalId: string; serviceId: string; date: string; start: string; notes: string };
+type StatusUpdateResult = { id: string; status: Status };
 
 function localDate() {
   const now = new Date();
@@ -24,6 +25,12 @@ function localDate() {
 
 const emptyForm = (): FormState => ({ customerName: "", customerPhone: "", professionalId: "", serviceId: "", date: localDate(), start: "", notes: "" });
 const labels: Record<Status, string> = { confirmed: "Confirmado", completed: "Concluído", cancelled: "Cancelado", no_show: "Não compareceu" };
+const allowedTransitions: Record<Status, Status[]> = {
+  confirmed: ["confirmed", "completed", "cancelled", "no_show"],
+  cancelled: ["cancelled", "confirmed"],
+  completed: ["completed"],
+  no_show: ["no_show"],
+};
 
 function minutes(value: string) { const [h, m] = value.slice(0, 5).split(":").map(Number); return h * 60 + m; }
 function clock(value: number) { return `${Math.floor(value / 60).toString().padStart(2, "0")}:${(value % 60).toString().padStart(2, "0")}`; }
@@ -45,6 +52,7 @@ export function AppointmentsManager({ businessId }: { businessId: string }) {
   const [statusFilter, setStatusFilter] = useState<"all" | Status>("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [statusSavingId, setStatusSavingId] = useState("");
   const [error, setError] = useState("");
 
   const loadData = useCallback(async () => {
@@ -119,7 +127,7 @@ export function AppointmentsManager({ businessId }: { businessId: string }) {
 
   async function findOrCreateClient(name: string, rawPhone: string) {
     const phone = normalizedPhone(rawPhone);
-    if (phone.length < 10) throw new Error("Informe um WhatsApp válido com DDD.");
+    if (phone.length < 10 || phone.length > 13) throw new Error("Informe um WhatsApp válido com DDD.");
 
     const { data: existing, error: findError } = await supabase.from("clients").select("id").eq("business_id", businessId).eq("phone_normalized", phone).maybeSingle();
     if (findError) throw findError;
@@ -169,18 +177,52 @@ export function AppointmentsManager({ businessId }: { businessId: string }) {
     }
   }
 
-  async function updateStatus(id: string, status: Status) {
-    const previous = appointments;
-    setAppointments((items) => items.map((item) => item.id === id ? { ...item, status } : item));
-    const { error: updateError } = await supabase.from("appointments").update({ status }).eq("id", id).eq("business_id", businessId);
-    if (updateError) { setAppointments(previous); setError(updateError.message); }
+  async function updateStatus(item: Appointment, status: Status) {
+    if (item.status === status || statusSavingId) return;
+
+    let reason: string | null = null;
+    if (status === "cancelled") {
+      reason = window.prompt("Informe o motivo do cancelamento:", "Cancelado pelo estabelecimento");
+      if (reason === null) return;
+    }
+
+    if (item.status === "cancelled" && status === "confirmed") {
+      const confirmed = window.confirm("Restaurar este agendamento como confirmado? Os lembretes antigos serão liberados para novo envio e a restauração falhará se o horário estiver ocupado.");
+      if (!confirmed) return;
+    }
+
+    if (status === "completed" || status === "no_show") {
+      const confirmed = window.confirm(status === "completed"
+        ? "Marcar este atendimento como concluído? Depois disso o status não poderá ser alterado."
+        : "Marcar o cliente como não compareceu? Depois disso o status não poderá ser alterado.");
+      if (!confirmed) return;
+    }
+
+    setStatusSavingId(item.id);
+    setError("");
+
+    const { data, error: updateError } = await supabase.rpc("update_dashboard_appointment_status", {
+      p_business_id: businessId,
+      p_appointment_id: item.id,
+      p_status: status,
+      p_reason: reason,
+    });
+
+    setStatusSavingId("");
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    const updated = data as StatusUpdateResult;
+    setAppointments((items) => items.map((current) => current.id === item.id ? { ...current, status: updated.status } : current));
   }
 
   return <div className="content">
     <div className="page-heading"><div><h1>Agendamentos</h1><p>Crie, acompanhe e atualize os atendimentos do estabelecimento.</p></div><button className="button button-primary" onClick={openCreate}>+ Novo agendamento</button></div>
     {error && <div className="notice-box" style={{marginBottom:16}}>{error}</div>}
     <div className="manager-toolbar card"><input className="input" value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Buscar cliente, serviço ou profissional" /><select className="input" value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value as "all"|Status)}><option value="all">Todos os status</option>{Object.entries(labels).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></div>
-    <div className="card panel table-wrap">{loading ? <div className="empty-state"><h3>Carregando agendamentos...</h3></div> : filtered.length ? <table className="table"><thead><tr><th>Data</th><th>Cliente</th><th>Serviço</th><th>Profissional</th><th>Status</th><th>Ações</th></tr></thead><tbody>{filtered.map((item)=><tr key={item.id}><td><strong>{new Date(`${item.appointment_date}T12:00:00`).toLocaleDateString("pt-BR")}</strong><div className="table-muted">{item.start_time.slice(0,5)}–{item.end_time.slice(0,5)}</div></td><td><strong>{item.customer_name}</strong><div className="table-muted">{item.customer_phone}</div></td><td>{item.service_name}<div className="table-muted">{money(item.service_price)} · {item.service_duration_minutes} min</div></td><td>{item.professional_name}</td><td><span className={`badge ${item.status === "completed" ? "badge-success" : "badge-purple"}`}>{labels[item.status]}</span></td><td><select className="input compact-input" value={item.status} onChange={(e)=>void updateStatus(item.id,e.target.value as Status)}>{Object.entries(labels).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></td></tr>)}</tbody></table> : <div className="empty-state"><h3>Nenhum agendamento encontrado</h3><p>Crie o primeiro atendimento manual ou altere os filtros.</p></div>}</div>
-    {open && <div className="modal-backdrop" onMouseDown={()=>!saving&&setOpen(false)}><div className="modal-card card appointment-modal" onMouseDown={(e)=>e.stopPropagation()}><div className="modal-header"><div><h2>Novo agendamento</h2><p>Os horários respeitam agenda, pausas, bloqueios e outros atendimentos.</p></div><button className="icon-button" disabled={saving} onClick={()=>setOpen(false)}>×</button></div><form onSubmit={submit}><div className="form-grid"><div className="field"><label>Cliente</label><input className="input" value={form.customerName} onChange={(e)=>setForm({...form,customerName:e.target.value})} required /></div><div className="field"><label>WhatsApp</label><input className="input" value={form.customerPhone} onChange={(e)=>setForm({...form,customerPhone:e.target.value})} required /></div><div className="field"><label>Profissional</label><select className="input" value={form.professionalId} onChange={(e)=>setForm({...form,professionalId:e.target.value,serviceId:"",start:""})} required><option value="">Selecione</option>{professionals.filter((item)=>item.active).map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div className="field"><label>Serviço</label><select className="input" value={form.serviceId} onChange={(e)=>setForm({...form,serviceId:e.target.value,start:""})} required><option value="">Selecione</option>{availableServices.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.duration_minutes} min</option>)}</select></div><div className="field"><label>Data</label><input className="input" type="date" min={localDate()} max={maxDate} value={form.date} onChange={(e)=>setForm({...form,date:e.target.value,start:""})} required /></div><div className="field"><label>Horário</label><select className="input" value={form.start} onChange={(e)=>setForm({...form,start:e.target.value})} required><option value="">{selectedService ? "Selecione um horário" : "Escolha o serviço primeiro"}</option>{slots.map((slot)=><option value={slot} key={slot}>{slot}</option>)}</select></div><div className="field field-wide"><label>Observações</label><textarea className="input textarea-input" value={form.notes} onChange={(e)=>setForm({...form,notes:e.target.value})} /></div></div>{selectedService&&selectedProfessional&&<div className="notice-box">Duração: {selectedService.duration_minutes} minutos · Profissional: {selectedProfessional.name} · {slots.length} horário(s) disponível(is).</div>}<div className="modal-actions"><button type="button" className="button button-secondary" disabled={saving} onClick={()=>setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={!form.start||saving}>{saving?"Salvando...":"Confirmar agendamento"}</button></div></form></div></div>}
+    <div className="card panel table-wrap">{loading ? <div className="empty-state"><h3>Carregando agendamentos...</h3></div> : filtered.length ? <table className="table"><thead><tr><th>Data</th><th>Cliente</th><th>Serviço</th><th>Profissional</th><th>Status</th><th>Ações</th></tr></thead><tbody>{filtered.map((item)=><tr key={item.id}><td><strong>{new Date(`${item.appointment_date}T12:00:00`).toLocaleDateString("pt-BR")}</strong><div className="table-muted">{item.start_time.slice(0,5)}–{item.end_time.slice(0,5)}</div></td><td><strong>{item.customer_name}</strong><div className="table-muted">{item.customer_phone}</div></td><td>{item.service_name}<div className="table-muted">{money(item.service_price)} · {item.service_duration_minutes} min</div></td><td>{item.professional_name}</td><td><span className={`badge ${item.status === "completed" ? "badge-success" : "badge-purple"}`}>{labels[item.status]}</span></td><td><select className="input compact-input" value={item.status} disabled={Boolean(statusSavingId) || item.status === "completed" || item.status === "no_show"} onChange={(e)=>void updateStatus(item,e.target.value as Status)}>{allowedTransitions[item.status].map((value)=><option value={value} key={value}>{labels[value]}</option>)}</select>{statusSavingId === item.id && <div className="table-muted" style={{marginTop:5}}>Atualizando...</div>}</td></tr>)}</tbody></table> : <div className="empty-state"><h3>Nenhum agendamento encontrado</h3><p>Crie o primeiro atendimento manual ou altere os filtros.</p></div>}</div>
+    {open && <div className="modal-backdrop" onMouseDown={()=>!saving&&setOpen(false)}><div className="modal-card card appointment-modal" onMouseDown={(e)=>e.stopPropagation()}><div className="modal-header"><div><h2>Novo agendamento</h2><p>Os horários respeitam agenda, pausas, bloqueios e outros atendimentos.</p></div><button className="icon-button" disabled={saving} onClick={()=>setOpen(false)}>×</button></div><form onSubmit={submit}><div className="form-grid"><div className="field"><label>Cliente</label><input className="input" maxLength={120} value={form.customerName} onChange={(e)=>setForm({...form,customerName:e.target.value})} required /></div><div className="field"><label>WhatsApp</label><input className="input" inputMode="tel" value={form.customerPhone} onChange={(e)=>setForm({...form,customerPhone:e.target.value})} required /></div><div className="field"><label>Profissional</label><select className="input" value={form.professionalId} onChange={(e)=>setForm({...form,professionalId:e.target.value,serviceId:"",start:""})} required><option value="">Selecione</option>{professionals.filter((item)=>item.active).map((item)=><option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div className="field"><label>Serviço</label><select className="input" value={form.serviceId} onChange={(e)=>setForm({...form,serviceId:e.target.value,start:""})} required><option value="">Selecione</option>{availableServices.map((item)=><option key={item.id} value={item.id}>{item.name} · {item.duration_minutes} min</option>)}</select></div><div className="field"><label>Data</label><input className="input" type="date" min={localDate()} max={maxDate} value={form.date} onChange={(e)=>setForm({...form,date:e.target.value,start:""})} required /></div><div className="field"><label>Horário</label><select className="input" value={form.start} onChange={(e)=>setForm({...form,start:e.target.value})} required><option value="">{selectedService ? "Selecione um horário" : "Escolha o serviço primeiro"}</option>{slots.map((slot)=><option value={slot} key={slot}>{slot}</option>)}</select></div><div className="field field-wide"><label>Observações</label><textarea className="input textarea-input" maxLength={2000} value={form.notes} onChange={(e)=>setForm({...form,notes:e.target.value})} /></div></div>{selectedService&&selectedProfessional&&<div className="notice-box">Duração: {selectedService.duration_minutes} minutos · Profissional: {selectedProfessional.name} · {slots.length} horário(s) disponível(is).</div>}<div className="modal-actions"><button type="button" className="button button-secondary" disabled={saving} onClick={()=>setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={!form.start||saving}>{saving?"Salvando...":"Confirmar agendamento"}</button></div></form></div></div>}
   </div>;
 }
