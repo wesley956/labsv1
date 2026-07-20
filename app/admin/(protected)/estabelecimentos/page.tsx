@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AdminBusinessesManager, type AdminBusiness } from "@/components/admin-businesses-manager";
 import { requirePlatformAdmin } from "@/lib/supabase/current-admin";
 import { createClient } from "@/lib/supabase/server";
@@ -22,11 +23,19 @@ export default async function AdminBusinessesPage() {
           <p>Consulte uso, responsáveis, período gratuito e situação da assinatura.</p>
         </div>
       </div>
+
+      {!!items.length && <section className="card admin-section" style={{ marginTop: 0, marginBottom: 18 }}>
+        <div className="admin-section-header"><div><h3>Detalhes individuais</h3><p>Abra a visão completa de qualquer estabelecimento.</p></div></div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {items.map((item) => <Link className="button button-secondary" href={`/admin/estabelecimentos/${item.id}`} key={item.id}>{item.name}</Link>)}
+        </div>
+      </section>}
+
       <section className="card admin-section" style={{ marginTop: 0 }}>
         <div className="admin-section-header">
           <div>
             <h3>{items.length} estabelecimento{items.length === 1 ? "" : "s"}</h3>
-            <p>Alterações de assinatura são registradas no histórico administrativo.</p>
+            <p>Alterações de assinatura e exclusões são registradas no histórico administrativo.</p>
           </div>
         </div>
         <AdminBusinessesManager initialItems={items} canWrite={admin.role === "super_admin"} />
