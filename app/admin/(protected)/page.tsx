@@ -46,6 +46,12 @@ function money(value: number | string) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
 }
 
+function eventTitle(event: AdminEvent) {
+  if (event.action === "business_deleted") return `Estabelecimento excluído · ${event.business_name}`;
+  if (event.action === "subscription_updated") return `Assinatura atualizada · ${event.business_name}`;
+  return `Ação administrativa · ${event.business_name}`;
+}
+
 export default async function AdminDashboardPage() {
   await requirePlatformAdmin();
   const supabase = await createClient();
@@ -107,15 +113,15 @@ export default async function AdminDashboardPage() {
       </section>
 
       <section className="card admin-section">
-        <div className="admin-section-header"><div><h3>Histórico administrativo</h3><p>Alterações realizadas pelo ADM ficam registradas aqui.</p></div></div>
+        <div className="admin-section-header"><div><h3>Histórico administrativo</h3><p>Alterações e exclusões realizadas pelo ADM ficam registradas aqui.</p></div></div>
         <div className="admin-events">
           {events.map((event) => (
             <div className="admin-event" key={event.id}>
-              <div><strong>Assinatura atualizada · {event.business_name}</strong><br /><small>Executado por {event.admin_email || "administrador"}</small></div>
+              <div><strong>{eventTitle(event)}</strong><br /><small>Executado por {event.admin_email || "administrador"}</small></div>
               <small>{new Date(event.created_at).toLocaleString("pt-BR")}</small>
             </div>
           ))}
-          {!events.length && <div className="empty-state"><strong>Nenhuma ação administrativa registrada</strong><p>As alterações de assinatura aparecerão aqui.</p></div>}
+          {!events.length && <div className="empty-state"><strong>Nenhuma ação administrativa registrada</strong><p>Alterações de assinatura e exclusões aparecerão aqui.</p></div>}
         </div>
       </section>
     </div>
