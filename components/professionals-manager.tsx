@@ -7,6 +7,10 @@ type Professional = { id: string; name: string; specialty: string; phone: string
 type Form = { name: string; specialty: string; phone: string; photo_url: string };
 const emptyForm: Form = { name: "", specialty: "", phone: "", photo_url: "" };
 
+function todayInSaoPaulo() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+}
+
 export function ProfessionalsManager({ businessId, initialItems }: { businessId: string; initialItems: Professional[] }) {
   const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<Professional[]>(initialItems);
@@ -16,6 +20,7 @@ export function ProfessionalsManager({ businessId, initialItems }: { businessId:
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [togglingId, setTogglingId] = useState("");
   const [error, setError] = useState("");
   const filtered = useMemo(() => items.filter((item) => `${item.name} ${item.specialty}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
 
@@ -52,7 +57,38 @@ export function ProfessionalsManager({ businessId, initialItems }: { businessId:
   }
 
   async function toggle(item: Professional) {
+    if (togglingId) return;
+    setError("");
+    setTogglingId(item.id);
+
+    if (item.active) {
+      const { count, error: countError } = await supabase
+        .from("appointments")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .eq("professional_id", item.id)
+        .gte("appointment_date", todayInSaoPaulo())
+        .neq("status", "cancelled");
+
+      if (countError) {
+        setError(countError.message);
+        setTogglingId("");
+        return;
+      }
+
+      const futureCount = count ?? 0;
+      const message = futureCount
+        ? `Este profissional possui ${futureCount} agendamento(s) futuro(s). Eles serão preservados, mas o profissional deixará de aparecer para novos agendamentos. Deseja continuar?`
+        : "O profissional deixará de aparecer para novos agendamentos. O histórico existente será preservado. Deseja continuar?";
+
+      if (!window.confirm(message)) {
+        setTogglingId("");
+        return;
+      }
+    }
+
     const { data, error: requestError } = await supabase.from("professionals").update({ active: !item.active }).eq("id", item.id).eq("business_id", businessId).select("id,name,specialty,phone,active,photo_url").single();
+    setTogglingId("");
     if (requestError) setError(requestError.message); else setItems((current) => current.map((row) => row.id === item.id ? data : row));
   }
 
@@ -61,9 +97,9 @@ export function ProfessionalsManager({ businessId, initialItems }: { businessId:
     {error && <div className="notice-box" style={{marginBottom:16}}>{error}</div>}
     <div className="card panel" style={{marginBottom:16}}><input className="input" value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Buscar por nome ou especialidade" /></div>
     <div className="card panel table-wrap"><table className="table"><thead><tr><th>Profissional</th><th>Especialidade</th><th>WhatsApp</th><th>Status</th><th>Ações</th></tr></thead><tbody>
-      {filtered.map((item)=><tr key={item.id}><td><div style={{display:"flex",alignItems:"center",gap:10}}>{item.photo_url ? <img src={item.photo_url} alt="" style={{width:42,height:42,borderRadius:"50%",objectFit:"cover"}} /> : <div className="profile-avatar small-avatar">{item.name.slice(0,1)}</div>}<strong>{item.name}</strong></div></td><td>{item.specialty}</td><td>{item.phone || "Não informado"}</td><td><span className={`badge ${item.active ? "badge-success" : "badge-purple"}`}>{item.active ? "Ativo" : "Inativo"}</span></td><td><div style={{display:"flex",gap:8}}><button className="button button-secondary" onClick={()=>startEdit(item)}>Editar</button><button className="button button-secondary" onClick={()=>toggle(item)}>{item.active ? "Desativar" : "Ativar"}</button></div></td></tr>)}
+      {filtered.map((item)=><tr key={item.id}><td><div style={{display:"flex",alignItems:"center",gap:10}}>{item.photo_url ? <img src={item.photo_url} alt="" style={{width:42,height:42,borderRadius:"50%",objectFit:"cover"}} /> : <div className="profile-avatar small-avatar">{item.name.slice(0,1)}</div>}<strong>{item.name}</strong></div></td><td>{item.specialty}</td><td>{item.phone || "Não informado"}</td><td><span className={`badge ${item.active ? "badge-success" : "badge-purple"}`}>{item.active ? "Ativo" : "Inativo"}</span></td><td><div style={{display:"flex",gap:8}}><button className="button button-secondary" disabled={Boolean(togglingId)} onClick={()=>startEdit(item)}>Editar</button><button className="button button-secondary" disabled={Boolean(togglingId)} onClick={()=>void toggle(item)}>{togglingId===item.id?"Verificando...":item.active?"Desativar":"Ativar"}</button></div></td></tr>)}
       {!filtered.length && <tr><td colSpan={5}><div className="empty-state"><h3>Nenhum profissional encontrado</h3></div></td></tr>}
     </tbody></table></div>
-    {open && <div style={{position:"fixed",inset:0,zIndex:80,display:"grid",placeItems:"center",padding:20,background:"rgba(6,10,24,.64)"}} onMouseDown={()=>!saving&&setOpen(false)}><section className="card panel" style={{width:"min(560px,100%)"}} onMouseDown={(event)=>event.stopPropagation()}><div className="panel-header"><h3>{editingId ? "Editar profissional" : "Novo profissional"}</h3><button className="icon-button" disabled={saving} onClick={()=>setOpen(false)}>×</button></div><div style={{display:"flex",alignItems:"center",gap:16,marginBottom:18}}>{form.photo_url ? <img src={form.photo_url} alt="Prévia" style={{width:84,height:84,borderRadius:"50%",objectFit:"cover"}} /> : <div className="profile-avatar" style={{width:84,height:84}}>{form.name.slice(0,1)||"P"}</div>}<label className="button button-secondary" style={{cursor:"pointer"}}>{uploading ? "Enviando..." : "Escolher foto"}<input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={uploading} onChange={(e)=>void uploadPhoto(e.target.files?.[0])} /></label></div><div className="field"><label>Nome completo</label><input className="input" value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})} /></div><div className="field"><label>Especialidade</label><input className="input" value={form.specialty} onChange={(e)=>setForm({...form,specialty:e.target.value})} /></div><div className="field"><label>WhatsApp</label><input className="input" value={form.phone} onChange={(e)=>setForm({...form,phone:e.target.value})} /></div><div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:24}}><button className="button button-secondary" disabled={saving} onClick={()=>setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={saving||uploading||!form.name.trim()||!form.specialty.trim()} onClick={submit}>{saving?"Salvando...":"Salvar profissional"}</button></div></section></div>}
+    {open && <div style={{position:"fixed",inset:0,zIndex:80,display:"grid",placeItems:"center",padding:20,background:"rgba(6,10,24,.64)"}} onMouseDown={()=>!saving&&setOpen(false)}><section className="card panel" style={{width:"min(560px,100%)"}} onMouseDown={(event)=>event.stopPropagation()}><div className="panel-header"><h3>{editingId ? "Editar profissional" : "Novo profissional"}</h3><button className="icon-button" disabled={saving} onClick={()=>setOpen(false)}>×</button></div><div style={{display:"flex",alignItems:"center",gap:16,marginBottom:18}}>{form.photo_url ? <img src={form.photo_url} alt="Prévia" style={{width:84,height:84,borderRadius:"50%",objectFit:"cover"}} /> : <div className="profile-avatar" style={{width:84,height:84}}>{form.name.slice(0,1)||"P"}</div>}<label className="button button-secondary" style={{cursor:"pointer"}}>{uploading ? "Enviando..." : "Escolher foto"}<input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={uploading} onChange={(e)=>void uploadPhoto(e.target.files?.[0])} /></label></div><div className="field"><label>Nome completo</label><input className="input" value={form.name} onChange={(e)=>setForm({...form,name:e.target.value})} /></div><div className="field"><label>Especialidade</label><input className="input" value={form.specialty} onChange={(e)=>setForm({...form,specialty:e.target.value})} /></div><div className="field"><label>WhatsApp</label><input className="input" inputMode="tel" value={form.phone} onChange={(e)=>setForm({...form,phone:e.target.value})} /></div><div style={{display:"flex",justifyContent:"flex-end",gap:10,marginTop:24}}><button className="button button-secondary" disabled={saving} onClick={()=>setOpen(false)}>Cancelar</button><button className="button button-primary" disabled={saving||uploading||!form.name.trim()||!form.specialty.trim()} onClick={submit}>{saving?"Salvando...":"Salvar profissional"}</button></div></section></div>}
   </div>;
 }
