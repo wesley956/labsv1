@@ -7,6 +7,9 @@ import "../admin.css";
 const links = [
   ["/admin", "Visão geral"],
   ["/admin/estabelecimentos", "Estabelecimentos"],
+  ["/admin/pagamentos", "Pagamentos"],
+  ["/admin/administradores", "Contas administrativas"],
+  ["/admin/atividades", "Histórico de atividades"],
   ["/painel", "Abrir painel cliente"],
 ] as const;
 
@@ -32,7 +35,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <header className="admin-topbar">
           <div>
             <h2>Cruz Agenda ADM</h2>
-            <p>Controle central da plataforma e das assinaturas.</p>
+            <p>Controle central da plataforma, acessos, cobranças e atividades.</p>
           </div>
           <span className="admin-role">{roleLabel}</span>
         </header>
@@ -41,7 +44,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <nav className="admin-mobile-nav">
         <Link href="/admin">Resumo</Link>
         <Link href="/admin/estabelecimentos">Clientes</Link>
-        <Link href="/painel">Painel</Link>
+        <Link href="/admin/pagamentos">Pagamentos</Link>
+        <Link href="/admin/atividades">Histórico</Link>
+        <Link href="/admin/administradores">Contas</Link>
       </nav>
     </div>
   );
