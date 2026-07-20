@@ -1,3 +1,4 @@
+import { MercadoPagoCancelButton } from "@/components/mercado-pago-cancel-button";
 import { MercadoPagoSubscriptionButton } from "@/components/mercado-pago-subscription-button";
 import { isMercadoPagoConfigured } from "@/lib/mercado-pago";
 import { requireCurrentBusiness, type SubscriptionStatus } from "@/lib/supabase/current-business";
@@ -133,7 +134,9 @@ export default async function SubscriptionPage() {
           </div>
         )}
 
-        {!hasAuthorizedSubscription && <MercadoPagoSubscriptionButton configured={configured} />}
+        {hasAuthorizedSubscription
+          ? <MercadoPagoCancelButton configured={configured} />
+          : <MercadoPagoSubscriptionButton configured={configured} />}
 
         <div className="settings-grid" style={{ marginTop: 22 }}>
           <div className="field">
